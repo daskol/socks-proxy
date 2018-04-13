@@ -36,3 +36,6 @@ target_link_libraries(socks-proxy-test Boost::system
 enable_testing()
 add_test(NAME test-all
          COMMAND ./socks-proxy-test)
+
+install(TARGETS socks-proxy
+        RUNTIME DESTINATION bin)

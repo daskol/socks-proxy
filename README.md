@@ -54,3 +54,9 @@ And then one could start building as follows.
     cmake ../.. -DCMAKE_BUILD_TYPE=Release
     make -j2
 ```
+
+In order to install target binary to system path one should run following.
+
+```bash
+    make install
+```
