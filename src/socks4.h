@@ -104,6 +104,7 @@ public:
         m_acceptor.get_io_service().stop();
     }
 
+    void run(void) noexcept;
     void startAccept(void) noexcept;
 
 private:

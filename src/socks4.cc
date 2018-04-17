@@ -340,6 +340,10 @@ void Session::onTimeout(error_code ec, bool client) noexcept {
     }
 }
 
+void Socks4Proxy::run(void) noexcept {
+    startAccept();
+}
+
 void Socks4Proxy::startAccept(void) noexcept {
     m_acceptor.async_accept(
         [this, that = shared_from_this()](error_code ec, tcp::socket socket) {
