@@ -3,3 +3,6 @@
  */
 
 #include <socks5.h>
+
+void Socks5Proxy::run(void) {
+}

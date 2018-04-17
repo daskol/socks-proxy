@@ -7,7 +7,10 @@
 #include <cstdint>
 #include <cstddef>
 #include <memory>
+
 #include <boost/asio.hpp>
+
+#include <acl.h>
 
 enum Version : uint8_t {
     SOCKS4 = 0x04,
@@ -98,14 +101,61 @@ struct NegotiationReply {
 
 #pragma pack(pop)
 
+struct UserPassRequest {
+    Version version;
+    std::string username;
+    std::string password;
+};
+
+class Socks5Session : public std::enable_shared_from_this<Socks5Session> {
+public:
+    Socks5Session(boost::asio::ip::tcp::socket socket,
+                  boost::posix_time::time_duration timeout)
+        : m_src(std::move(socket))
+        , m_dst(m_src.get_io_service())
+        , m_timeout(timeout) {}
+
+    void init(void) noexcept;
+
+private:
+    void doRecvSubNegotiation(void) noexcept;
+    void doSendSubNegotiation(void) noexcept;
+
+    void doRecvNegotiation(void) noexcept;
+    void doSendNegotiation(void) noexcept;
+
+    void doRecvFromClient(void) noexcept;
+    void doSendToServer(size_t size) noexcept;
+
+    void doRecvFromServer(void) noexcept;
+    void doSendToClient(size_t size) noexcept;
+
+private:
+    boost::asio::ip::tcp::socket m_src;
+    boost::asio::ip::tcp::socket m_dst;
+    boost::posix_time::time_duration m_timeout;
+};
+
 class Socks5Proxy : public std::enable_shared_from_this<Socks5Proxy> {
 public:
     Socks5Proxy(boost::asio::io_service& io_service,
                 boost::asio::ip::tcp::endpoint at,
-                boost::posix_time::time_duration timeout);
+                boost::posix_time::time_duration timeout,
+                const ACL &acl)
+        : m_acceptor(io_service, at)
+        , m_timeout(timeout)
+        , m_acl{acl} {}
 
-    ~Socks5Proxy(void);
+    ~Socks5Proxy(void) {
+        m_acceptor.get_io_service().stop();
+    }
 
     void run(void);
     void stop(void);
+
+private:
+    boost::asio::ip::tcp::acceptor m_acceptor;
+    boost::posix_time::time_duration m_timeout;
+
+    const ACL m_acl;
 };

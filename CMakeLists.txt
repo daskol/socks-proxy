@@ -17,7 +17,7 @@ include_directories(deps/googletest/googlemock/include)
 include_directories(deps/googletest/googletest/include)
 include_directories(src)
 
-set(SRCS src/socks4.cc src/socks5.cc)
+set(SRCS src/acl.cc src/socks4.cc src/socks5.cc)
 set(TEST_SRCS src/test_socks4.cc)
 
 add_library(socks-obj OBJECT ${SRCS})
