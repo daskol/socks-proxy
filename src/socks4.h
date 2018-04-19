@@ -13,6 +13,8 @@
 #include <boost/asio.hpp>
 #include <glog/logging.h>
 
+#include <common.h>
+
 #pragma pack(push, 1)
 
 struct Hello {
@@ -36,10 +38,6 @@ void Socks4Handshake(boost::asio::ip::tcp::socket& conn,
 void ConnectProxyChain(boost::asio::ip::tcp::socket& socket,
                        const std::vector<ProxyParams>& proxy_chain,
                        boost::asio::ip::tcp::endpoint destination);
-
-constexpr size_t operator""_kb(unsigned long long kilobytes) {
-    return kilobytes * 1024;  // bytes
-}
 
 class Session : public std::enable_shared_from_this<Session> {
     static constexpr size_t m_buffer_size = 4_kb;

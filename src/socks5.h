@@ -11,6 +11,7 @@
 #include <boost/asio.hpp>
 
 #include <acl.h>
+#include <common.h>
 
 enum Version : uint8_t {
     SOCKS4 = 0x04,
@@ -108,35 +109,45 @@ struct UserPassRequest {
 };
 
 class Socks5Session : public std::enable_shared_from_this<Socks5Session> {
+    using error_code = boost::system::error_code;
+
 public:
     Socks5Session(boost::asio::ip::tcp::socket socket,
                   boost::posix_time::time_duration timeout)
         : m_src(std::move(socket))
         , m_dst(m_src.get_io_service())
-        , m_timeout(timeout) {}
+        , m_timeout(timeout)
+        , m_input_buffer{new uint8_t[4_kb]}
+        , m_input_size{0} {}
 
     void init(void) noexcept;
 
 private:
-    void doRecvSubNegotiation(void) noexcept;
-    void doSendSubNegotiation(void) noexcept;
+    void recvSubNegotiation(const error_code &, size_t) noexcept;
+    void sendSubNegotiation(void) noexcept;
 
-    void doRecvNegotiation(void) noexcept;
-    void doSendNegotiation(void) noexcept;
+    void recvNegotiation(void) noexcept;
+    void sendNegotiation(void) noexcept;
 
-    void doRecvFromClient(void) noexcept;
-    void doSendToServer(size_t size) noexcept;
+    void recvFromClient(void) noexcept;
+    void sendToServer(size_t size) noexcept;
 
-    void doRecvFromServer(void) noexcept;
-    void doSendToClient(size_t size) noexcept;
+    void recvFromServer(void) noexcept;
+    void sendToClient(size_t size) noexcept;
 
 private:
     boost::asio::ip::tcp::socket m_src;
     boost::asio::ip::tcp::socket m_dst;
     boost::posix_time::time_duration m_timeout;
+
+    std::unique_ptr<uint8_t> m_input_buffer;
+    size_t m_input_size;
 };
 
 class Socks5Proxy : public std::enable_shared_from_this<Socks5Proxy> {
+    using error_code = boost::system::error_code;
+    using tcp = boost::asio::ip::tcp;
+
 public:
     Socks5Proxy(boost::asio::io_service& io_service,
                 boost::asio::ip::tcp::endpoint at,
@@ -152,6 +163,9 @@ public:
 
     void run(void);
     void stop(void);
+
+private:
+    void accept(const error_code &, tcp::socket) noexcept;
 
 private:
     boost::asio::ip::tcp::acceptor m_acceptor;
