@@ -171,5 +171,5 @@ private:
     boost::asio::ip::tcp::acceptor m_acceptor;
     boost::posix_time::time_duration m_timeout;
 
-    const ACL m_acl;
+    const ACL &m_acl;
 };

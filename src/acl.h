@@ -14,6 +14,9 @@ public:
     ACL(const ACL &) = default;
     ACL(ACL &&) = default;
 
+    ACL& operator = (const ACL &) = default;
+    ACL& operator = (ACL &&) = default;
+
     bool find(const std::string &user_pass) const noexcept;
 
     /**
