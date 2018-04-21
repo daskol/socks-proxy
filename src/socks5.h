@@ -52,13 +52,13 @@ enum AddressType : uint8_t {
 #pragma pack(push, 1)
 
 struct SubNegotiationRequest {
-    Version    version;
+    Version         version;
     uint8_t         nomethods;
     AuthMethod      methods[1];
 };
 
 struct SubNegotiationResponse {
-    Version    version;
+    Version         version;
     AuthMethod      method;
 };
 
@@ -124,10 +124,12 @@ public:
 
 private:
     void recvSubNegotiation(const error_code &, size_t) noexcept;
-    void sendSubNegotiation(void) noexcept;
+    void sendSubNegotiation(const error_code &) noexcept;
 
     void recvNegotiation(void) noexcept;
     void sendNegotiation(void) noexcept;
+
+    void recvUserPass(const error_code &, size_t) noexcept;
 
     void recvFromClient(void) noexcept;
     void sendToServer(size_t size) noexcept;
@@ -135,12 +137,14 @@ private:
     void recvFromServer(void) noexcept;
     void sendToClient(size_t size) noexcept;
 
+    AuthMethod getSupportedMethod(const AuthMethod *, size_t) const noexcept;
+
 private:
     boost::asio::ip::tcp::socket m_src;
     boost::asio::ip::tcp::socket m_dst;
     boost::posix_time::time_duration m_timeout;
 
-    std::unique_ptr<uint8_t> m_input_buffer;
+    std::unique_ptr<uint8_t[]> m_input_buffer;
     size_t m_input_size;
 };
 
