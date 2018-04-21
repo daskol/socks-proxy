@@ -43,6 +43,11 @@ enum Reply : uint8_t {
     ADDRESS_NOT_SUPPORTED = 0x08,
 };
 
+enum Status : uint8_t {
+    SUCCESS = 0x00,
+    FORBIDDEN = 0x01,
+};
+
 enum AddressType : uint8_t {
     AT_IPV4 = 0x01,
     AT_FQDN = 0x03,
@@ -85,8 +90,8 @@ union Destination {
 };
 
 struct NegotiationRequest {
-    Version    version;
-    Command    command;
+    Version         version;
+    Command         command;
     uint8_t         reserverd;
     AddressType     addr_type;
     Destination     dest;
@@ -108,17 +113,67 @@ struct UserPassRequest {
     std::string password;
 };
 
+struct AuthStatusResponse {
+    Version version;
+    Status  status;
+};
+
+class UsernamePasswordNegotiator
+    : public std::enable_shared_from_this<UsernamePasswordNegotiator> {
+
+    static constexpr uint8_t m_version = 0x01;  // subnegotiation version
+
+public:
+    typedef std::function<void(bool)> handler_t;
+
+    UsernamePasswordNegotiator(boost::asio::ip::tcp::socket &socket,
+                               const ACL &acl,
+                               uint8_t *buffer,
+                               size_t size,
+                               size_t capacity) noexcept
+        : m_username{}
+        , m_password{}
+        , m_acl{acl}
+        , m_socket{socket}
+        , m_handler{nullptr}
+        , m_data{buffer}
+        , m_size{size}
+        , m_capacity{capacity} {}
+
+    void negotiate(handler_t handler) noexcept;
+
+private:
+    void recvHeader(void) noexcept;
+    void recvUsername(void) noexcept;
+    void recvPassword(void) noexcept;
+    void sendStatus(void) noexcept;
+
+private:
+    std::string m_username;
+    std::string m_password;
+
+    const ACL &m_acl;
+    boost::asio::ip::tcp::socket &m_socket;
+    handler_t m_handler;
+
+    uint8_t *m_data;
+    size_t m_size;
+    size_t m_capacity;
+};
+
 class Socks5Session : public std::enable_shared_from_this<Socks5Session> {
     using error_code = boost::system::error_code;
 
 public:
     Socks5Session(boost::asio::ip::tcp::socket socket,
-                  boost::posix_time::time_duration timeout)
+                  boost::posix_time::time_duration timeout,
+                  const ACL &acl)
         : m_src(std::move(socket))
         , m_dst(m_src.get_io_service())
         , m_timeout(timeout)
         , m_input_buffer{new uint8_t[4_kb]}
-        , m_input_size{0} {}
+        , m_input_size{0}
+        , m_acl{acl} {}
 
     void init(void) noexcept;
 
@@ -146,6 +201,8 @@ private:
 
     std::unique_ptr<uint8_t[]> m_input_buffer;
     size_t m_input_size;
+
+    const ACL &m_acl;
 };
 
 class Socks5Proxy : public std::enable_shared_from_this<Socks5Proxy> {

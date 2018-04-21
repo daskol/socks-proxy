@@ -12,6 +12,106 @@ using boost::asio::mutable_buffer;
 using boost::asio::ip::tcp;
 using boost::system::error_code;
 
+void UsernamePasswordNegotiator::negotiate(handler_t handler) noexcept {
+    LOG(INFO) << "Launch username/password auth negotiation";
+    m_handler = handler;
+    recvHeader();
+}
+
+void UsernamePasswordNegotiator::recvHeader(void) noexcept {
+    LOG(INFO) << "Recieve and check header: size=" << m_size
+              << "/" << m_capacity;
+
+    if (m_size < sizeof(uint8_t)) {
+        auto that = shared_from_this();
+        m_socket.async_read_some(buffer(m_data + m_size, m_capacity - m_size),
+                                 [this, that] (auto &ec, size_t size) {
+            if (ec) {
+                LOG(ERROR) << "Failed to read some bytes: [" << ec.value()
+                           << "] " << ec.message();
+                m_handler(false);
+            } else {
+                m_size += size;
+                recvHeader();
+            }
+        });
+    } else if (m_data[0] != m_version) {
+        LOG(INFO) << "version = " << (int)m_data[0];
+        m_handler(false);
+    } else {
+        recvUsername();
+    }
+}
+
+void UsernamePasswordNegotiator::recvUsername(void) noexcept {
+    LOG(INFO) << "Recieving username";
+
+    size_t expected = 2 * sizeof(uint8_t);
+
+    if (m_size >= expected && m_size >= expected + m_data[1]) {
+        m_username = std::string(m_data + 2, m_data + expected + m_data[1]);
+        recvPassword();
+    } else {
+        auto that = shared_from_this();
+        m_socket.async_read_some(buffer(m_data + m_size, m_capacity - m_size),
+                                 [this, that] (auto &ec, size_t size) {
+            if (ec) {
+                LOG(ERROR) << "Failed to read some bytes: [" << ec.value()
+                           << "] " << ec.message();
+                m_handler(false);
+            } else {
+                m_size += size;
+                recvUsername();
+            }
+        });
+    }
+}
+
+void UsernamePasswordNegotiator::recvPassword(void) noexcept {
+    LOG(INFO) << "Recieving password";
+
+    size_t expected = 3 * sizeof(uint8_t) + m_data[1];
+    size_t length = m_data[expected - 1];
+
+    if (m_size >= expected && m_size == expected + length) {
+        uint8_t *begin = m_data + expected;
+        uint8_t *end = m_data + expected + length;
+        m_password = std::string(begin, end);
+        sendStatus();
+    } else if (m_size >= expected + length) {
+        LOG(INFO) << "wrong auth username/password request";
+        m_handler(false);
+    }
+}
+
+void UsernamePasswordNegotiator::sendStatus(void) noexcept {
+    LOG(INFO) << "Recieved username=" << m_username
+              << "; password=" << m_password << ";";
+
+    bool status = m_acl.find(m_username + ":" + m_password);
+
+    struct {
+        uint8_t version;
+        uint8_t status;
+    } response;
+
+    response.version = m_version;
+    response.status = status ? Status::SUCCESS : Status::FORBIDDEN;
+
+    auto that = shared_from_this();
+    auto buf = buffer(&response, 2 * sizeof(uint8_t));
+
+    async_write(m_socket, buf, [this, that, status] (auto &ec, size_t size) {
+        if (ec) {
+            LOG(ERROR) << "Failed write auth status: [" << ec.value()
+                       << "] " << ec.message();
+            m_handler(false);
+        } else {
+            m_handler(status);
+        }
+    });
+}
+
 void Socks5Session::init(void) noexcept {
     LOG(INFO) << "Instantiate socks5 session for incomming connection "
                << m_src.remote_endpoint();
@@ -93,6 +193,18 @@ void Socks5Session::recvUserPass(const error_code &ec,
                                  size_t bytes_transfered) noexcept {
     LOG(INFO) << "Recieving " << bytes_transfered
               << " bytes for username/password auth";
+
+    m_input_size += bytes_transfered;
+
+    auto that = shared_from_this();
+    auto ptr = m_input_buffer.get();
+    auto neg = std::make_shared<UsernamePasswordNegotiator>(
+        m_src, m_acl, ptr, m_input_size, 4_kb
+    );
+
+    neg->negotiate([this, that, neg] (bool status) {
+        LOG(INFO) << "Access " << (status ? "granted" : "denied");
+    });
 }
 
 AuthMethod Socks5Session::getSupportedMethod(const AuthMethod *methods,
@@ -124,7 +236,8 @@ void Socks5Proxy::accept(const error_code &ec, tcp::socket sock) noexcept {
     LOG(INFO) << "Accept connection from `" << sock.remote_endpoint() << "`";
 
     auto that = shared_from_this();
-    auto session = std::make_shared<Socks5Session>(std::move(sock), m_timeout);
+    auto session = std::make_shared<Socks5Session>(std::move(sock),
+                                                   m_timeout, m_acl);
 
     session->init();
 
