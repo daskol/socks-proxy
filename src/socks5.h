@@ -121,6 +121,10 @@ struct AuthStatusResponse {
     Status  status;
 };
 
+/**
+ *  UsernamePasswordNegotiator is an auxiliary type which is implement
+ *  negotiation and authrization strategy for an incomming connection.
+ */
 class UsernamePasswordNegotiator
     : public std::enable_shared_from_this<UsernamePasswordNegotiator> {
 
@@ -164,6 +168,10 @@ private:
     size_t m_capacity;
 };
 
+/**
+ *  Socks5Session is an object that ownes incomming connection. It manages the
+ *  connection and transmits data from client to server and vice versa.
+ */
 class Socks5Session : public std::enable_shared_from_this<Socks5Session> {
     using error_code = boost::system::error_code;
 
@@ -221,6 +229,10 @@ private:
     const ACL &m_acl;
 };
 
+/**
+ *  Class Socks5Proxy implements acceptor patter in order to multiplex
+ *  incomming connection into isolated session instanciated from Socks5Session.
+ */
 class Socks5Proxy : public std::enable_shared_from_this<Socks5Proxy> {
     using error_code = boost::system::error_code;
     using tcp = boost::asio::ip::tcp;
