@@ -72,7 +72,7 @@ struct IPv4 {
     uint16_t port;
 };
 
-typedef uint8_t uint128_t[8];
+typedef uint8_t uint128_t[16];
 
 struct IPv6 {
     uint128_t   ip;
@@ -97,15 +97,18 @@ struct NegotiationRequest {
     Destination     dest;
 };
 
-struct NegotiationReply {
-    Version    version;
-    Reply      reply;
-    uint8_t         reserverd;
+struct NegotiationResponse {
+    Version         version;
+    Reply           reply;
+    uint8_t         reserved;
     AddressType     addr_type;
     Destination     dest;
 };
 
 #pragma pack(pop)
+
+std::ostream &operator << (std::ostream &os, const IPv4 &addr);
+std::ostream &operator << (std::ostream &os, const IPv6 &addr);
 
 struct UserPassRequest {
     Version version;
@@ -178,19 +181,25 @@ public:
     void init(void) noexcept;
 
 private:
+    void authorize(const boost::system::error_code &, size_t) noexcept;
+
     void recvSubNegotiation(const error_code &, size_t) noexcept;
     void sendSubNegotiation(const error_code &) noexcept;
 
     void recvNegotiation(void) noexcept;
     void sendNegotiation(void) noexcept;
 
-    void recvUserPass(const error_code &, size_t) noexcept;
-
     void recvFromClient(void) noexcept;
     void sendToServer(size_t size) noexcept;
 
     void recvFromServer(void) noexcept;
     void sendToClient(size_t size) noexcept;
+
+    void recvNegotiationHeader(void) noexcept;
+    void recvIPv4Address(void) noexcept;
+    void recvIPv6Address(void) noexcept;
+
+    void connect(const boost::asio::ip::tcp::endpoint &endpoint) noexcept;
 
     AuthMethod getSupportedMethod(const AuthMethod *, size_t) const noexcept;
 
