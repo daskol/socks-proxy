@@ -167,6 +167,8 @@ private:
 class Socks5Session : public std::enable_shared_from_this<Socks5Session> {
     using error_code = boost::system::error_code;
 
+    static constexpr size_t m_buffer_size = 4_kb;
+
 public:
     Socks5Session(boost::asio::ip::tcp::socket socket,
                   boost::posix_time::time_duration timeout,
@@ -174,8 +176,10 @@ public:
         : m_src(std::move(socket))
         , m_dst(m_src.get_io_service())
         , m_timeout(timeout)
-        , m_input_buffer{new uint8_t[4_kb]}
         , m_input_size{0}
+        , m_output_size{0}
+        , m_input_buffer{new uint8_t[m_buffer_size]}
+        , m_output_buffer{new uint8_t[m_buffer_size]}
         , m_acl{acl} {}
 
     void init(void) noexcept;
@@ -189,11 +193,11 @@ private:
     void recvNegotiation(void) noexcept;
     void sendNegotiation(void) noexcept;
 
-    void recvFromClient(void) noexcept;
-    void sendToServer(size_t size) noexcept;
+    void recvChunkFromClient(void) noexcept;
+    void recvChunkFromServer(void) noexcept;
 
-    void recvFromServer(void) noexcept;
-    void sendToClient(size_t size) noexcept;
+    void sendChunkToClient(size_t size) noexcept;
+    void sendChunkToServer(size_t size) noexcept;
 
     void recvNegotiationHeader(void) noexcept;
     void recvIPv4Address(void) noexcept;
@@ -208,8 +212,11 @@ private:
     boost::asio::ip::tcp::socket m_dst;
     boost::posix_time::time_duration m_timeout;
 
-    std::unique_ptr<uint8_t[]> m_input_buffer;
     size_t m_input_size;
+    size_t m_output_size;
+
+    std::unique_ptr<uint8_t[]> m_input_buffer;
+    std::unique_ptr<uint8_t[]> m_output_buffer;
 
     const ACL &m_acl;
 };

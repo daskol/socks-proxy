@@ -307,12 +307,14 @@ void Socks5Session::recvNegotiationHeader(void) noexcept {
         switch (req->addr_type) {
         case AddressType::AT_IPV4:
             recvIPv4Address();
+            break;
         case AddressType::AT_IPV6:
             recvIPv6Address();
+            break;
         default:
             LOG(ERROR) << "Unsupported address type: " << req->addr_type;
+            break;
         }
-
     });
 }
 
@@ -330,11 +332,19 @@ void Socks5Session::recvIPv4Address(void) noexcept {
         }
 
         auto *ipv4 = reinterpret_cast<IPv4 *>(m_input_buffer.get());
+        uint32_t ip = ipv4->ip;
+        uint16_t port = ((ipv4->port & 0xff00) >> 8 |
+                         (ipv4->port & 0x00ff) << 8);
 
-        ipv4->port = ((ipv4->port & 0xff00) >> 8 |
-                      (ipv4->port & 0x00ff) << 8);
+        boost::asio::ip::address_v4 addr({
+            uint8_t((ip & 0x000000ff) >> 0),
+            uint8_t((ip & 0x0000ff00) >> 8),
+            uint8_t((ip & 0x00ff0000) >> 16),
+            uint8_t((ip & 0xff000000) >> 24),
+        });
+        boost::asio::ip::tcp::endpoint endpoint(addr, ipv4->port);
 
-        LOG(INFO) << "Address is " << *ipv4;
+        connect(endpoint);
     });
 }
 
@@ -353,11 +363,8 @@ void Socks5Session::recvIPv6Address(void) noexcept {
 
         auto *ipv6 = reinterpret_cast<IPv6 *>(m_input_buffer.get());
         auto &ip = ipv6->ip;
-
-        ipv6->port = ((ipv6->port & 0xff00) >> 8 |
-                      (ipv6->port & 0x00ff) << 8);
-
-        LOG(INFO) << "IPv6 address is " << *ipv6;
+        uint16_t port = ((ipv6->port & 0xff00) >> 8 |
+                         (ipv6->port & 0x00ff) << 8);
 
         boost::asio::ip::address_v6 addr({
             ip[0], ip[1], ip[2],  ip[3],  ip[4],  ip[5],  ip[6],  ip[7],
@@ -432,14 +439,6 @@ void Socks5Session::sendNegotiation(void) noexcept {
     auto buf = buffer(m_input_buffer.get(), offset);
     auto that = shared_from_this();
 
-    std::string str;
-
-    for (size_t i = 0; i != offset; ++i) {
-        str += "\\x" + uint8tochar(ptr[i]);
-    }
-
-    LOG(INFO) << "negotiation response is res = '" << str << "'";
-
     async_write(m_src, buf, [this, that] (auto ec, auto size) {
         if (ec) {
             LOG(ERROR) << "Failed to send negotiation response: ["
@@ -448,6 +447,64 @@ void Socks5Session::sendNegotiation(void) noexcept {
         }
 
         LOG(INFO) << "Start bidirectional retransmission"; // TODO(@daskol)
+        recvChunkFromClient();
+        recvChunkFromServer();
+    });
+}
+
+void Socks5Session::recvChunkFromClient(void) noexcept {
+    auto buf = buffer(m_input_buffer.get(), m_buffer_size);
+    auto that = shared_from_this();
+
+    m_src.async_read_some(buf, [this, that] (auto ec, auto size) {
+        if (ec) {
+            LOG(ERROR) << "Failed to recieve chunk from client: ["
+                       << ec.value() << "] " << ec.message();
+        } else {
+            sendChunkToServer(size);
+        }
+    });
+}
+
+void Socks5Session::recvChunkFromServer(void) noexcept {
+    auto buf = buffer(m_output_buffer.get(), m_buffer_size);
+    auto that = shared_from_this();
+
+    m_dst.async_read_some(buf, [this, that] (auto ec, auto size) {
+        if (ec) {
+            LOG(ERROR) << "Failed to recieve chunk from server: ["
+                       << ec.value() << "] " << ec.message();
+        } else {
+            sendChunkToClient(size);
+        }
+    });
+}
+
+void Socks5Session::sendChunkToClient(size_t size) noexcept {
+    auto buf = buffer(m_output_buffer.get(), size);
+    auto that = shared_from_this();
+
+    async_write(m_src, buf, [this, that] (auto ec, auto size) {
+        if (ec) {
+            LOG(ERROR) << "Failed to send chunk to client: ["
+                       << ec.value() << "] " << ec.message();
+        } else {
+            recvChunkFromServer();
+        }
+    });
+}
+
+void Socks5Session::sendChunkToServer(size_t size) noexcept {
+    auto buf = buffer(m_input_buffer.get(), size);
+    auto that = shared_from_this();
+
+    async_write(m_dst, buf, [this, that] (auto ec, auto size) {
+        if (ec) {
+            LOG(ERROR) << "Failed to send chunk to server: ["
+                       << ec.value() << "] " << ec.message();
+        } else {
+            recvChunkFromClient();
+        }
     });
 }
 
